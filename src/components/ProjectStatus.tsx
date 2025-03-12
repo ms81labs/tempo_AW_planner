@@ -14,6 +14,7 @@ import {
   Shield,
   Users,
   Map,
+  QrCode,
 } from "lucide-react";
 
 const ProjectStatus = () => {
@@ -124,13 +125,14 @@ const ProjectStatus = () => {
             </div>
 
             <div className="border rounded-md p-4 space-y-2">
-              <h4 className="font-medium">Battlegroup Management</h4>
+              <h4 className="font-medium">Member Management</h4>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Create battlegroups</li>
+                <li>Add members with in-game name and LINE ID</li>
+                <li>View member details and champion roster</li>
+                <li>Generate QR codes for roster updates</li>
+                <li>No-auth roster update via QR code</li>
                 <li>Assign members to battlegroups</li>
-                <li>View battlegroup composition</li>
-                <li>Remove members from battlegroups</li>
-                <li>Track battlegroup statistics</li>
+                <li>Track member champion statistics</li>
               </ul>
             </div>
 
@@ -142,6 +144,37 @@ const ProjectStatus = () => {
                 <li>Attack path planning</li>
                 <li>War season tracking</li>
                 <li>War results and statistics</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <QrCode className="h-5 w-5 text-primary" /> QR Code Integration
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="border rounded-md p-4 space-y-2">
+              <h4 className="font-medium">QR Code Features</h4>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>Generate unique QR codes for each member</li>
+                <li>QR codes link to no-auth roster update page</li>
+                <li>Members can scan QR to update their roster</li>
+                <li>Copy shareable links for distribution</li>
+                <li>Secure access to member-specific data</li>
+              </ul>
+            </div>
+
+            <div className="border rounded-md p-4 space-y-2">
+              <h4 className="font-medium">Roster Update Page</h4>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>No authentication required</li>
+                <li>View existing champion roster</li>
+                <li>Add new champions with proper rarity/rank</li>
+                <li>Remove champions from roster</li>
+                <li>Filter champions by class</li>
+                <li>Real-time updates to database</li>
               </ul>
             </div>
           </div>
@@ -196,7 +229,11 @@ const ProjectStatus = () => {
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
-              <span>Battlegroup management interface implemented</span>
+              <span>Member management with QR code generation</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <span>No-auth roster update system working</span>
             </div>
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
