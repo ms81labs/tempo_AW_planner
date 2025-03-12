@@ -41,6 +41,7 @@ const Header = ({
   const navItems = [
     { name: "Dashboard", path: "/" },
     { name: "Champion List", path: "/champions" },
+    { name: "Members", path: "/members" },
     { name: "Battlegroups", path: "/battlegroups" },
     { name: "Defense Planner", path: "/defense" },
     { name: "War Map", path: "/war-map" },

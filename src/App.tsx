@@ -7,6 +7,9 @@ import LoginPage from "./pages/LoginPage";
 import BattlegroupPage from "./pages/BattlegroupPage";
 import ChampionListPage from "./pages/ChampionListPage";
 import StatusPage from "./pages/StatusPage";
+import MembersPage from "./pages/MembersPage";
+import MemberDetailPage from "./pages/MemberDetailPage";
+import RosterUpdatePage from "./pages/RosterUpdatePage";
 import routes from "tempo-routes";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -52,12 +55,33 @@ function App() {
               }
             />
             <Route
+              path="/members"
+              element={
+                <ProtectedRoute>
+                  <MembersPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/member/:memberId"
+              element={
+                <ProtectedRoute>
+                  <MemberDetailPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/status"
               element={
                 <ProtectedRoute>
                   <StatusPage />
                 </ProtectedRoute>
               }
+            />
+            {/* Public route for roster updates via QR code - no auth needed */}
+            <Route
+              path="/roster-update/:memberId"
+              element={<RosterUpdatePage />}
             />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
