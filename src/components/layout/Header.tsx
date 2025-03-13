@@ -23,7 +23,7 @@ import {
 interface HeaderProps {
   userName?: string;
   userAvatar?: string;
-  userRole?: "officer" | "member";
+  userRole?: "officer" | "member" | "admin";
   notificationCount?: number;
   onNavigate?: (path: string) => void;
   onLogout?: () => void;
@@ -40,16 +40,21 @@ const Header = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
-  const navItems = [
-    { name: "Dashboard", path: "/" },
-    { name: "Champion List", path: "/champions" },
-    { name: "Members", path: "/members" },
-    { name: "Battlegroups", path: "/battlegroups" },
-    { name: "Defense Planner", path: "/defense" },
-    { name: "War Map", path: "/war-map" },
-    { name: "War Season", path: "/season" },
-    { name: "Project Status", path: "/status" },
-  ];
+  // Determine nav items based on user role
+  const navItems =
+    userRole === "admin"
+      ? [
+          { name: "Admin Dashboard", path: "/admin" },
+          { name: "Project Status", path: "/status" },
+        ]
+      : [
+          { name: "Dashboard", path: "/" },
+          { name: "Champion List", path: "/champions" },
+          { name: "Members", path: "/members" },
+          { name: "Battlegroups", path: "/battlegroups" },
+          { name: "War Map", path: "/war-map" },
+          { name: "Project Status", path: "/status" },
+        ];
 
   // Handle navigation with proper event handling
   const handleNavigation = useCallback(
@@ -148,13 +153,15 @@ const Header = ({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => onNavigate("/profile")}>
-                Profile
+              <DropdownMenuItem onClick={() => handleNavigation("/")}>
+                Dashboard
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onNavigate("/settings")}>
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
-              </DropdownMenuItem>
+              {userRole === "admin" && (
+                <DropdownMenuItem onClick={() => handleNavigation("/admin")}>
+                  <Shield className="h-4 w-4 mr-2" />
+                  Admin Dashboard
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLogout} className="text-red-500">
                 <LogOut className="h-4 w-4 mr-2" />

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import {
@@ -11,27 +11,105 @@ import {
 } from "../ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Label } from "../ui/label";
-import { Shield, Mail, Lock, User, AlertCircle } from "lucide-react";
+import {
+  Shield,
+  Mail,
+  Lock,
+  User,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Info,
+  ShieldAlert,
+} from "lucide-react";
+import { useLocation } from "react-router-dom";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
+import { Checkbox } from "../ui/checkbox";
 
 interface LoginFormProps {
-  onLogin?: (email: string, password: string) => void;
+  onLogin?: (email: string, password: string, isAdmin?: boolean) => void;
   onRegister?: (email: string, password: string, inviteCode: string) => void;
   onGoogleLogin?: () => void;
+  onForgotPassword?: (email: string) => void;
   isLoading?: boolean;
+  serverError?: string;
 }
 
 const LoginForm: React.FC<LoginFormProps> = ({
   onLogin = () => {},
   onRegister = () => {},
   onGoogleLogin = () => {},
+  onForgotPassword = () => {},
   isLoading = false,
+  serverError = "",
 }) => {
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+  const [isAdminLogin, setIsAdminLogin] = useState(false);
+
+  // Set error from server if provided
+  useEffect(() => {
+    if (serverError) {
+      setError(serverError);
+    }
+  }, [serverError]);
+
+  // Check if we should show the register tab based on URL params
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const invite = searchParams.get("invite");
+    if (invite) {
+      setActiveTab("register");
+      setInviteCode(invite);
+    }
+  }, [location]);
+
+  // Calculate password strength
+  useEffect(() => {
+    if (!password) {
+      setPasswordStrength(0);
+      return;
+    }
+
+    let strength = 0;
+    // Length check
+    if (password.length >= 8) strength += 1;
+    // Contains lowercase
+    if (/[a-z]/.test(password)) strength += 1;
+    // Contains uppercase
+    if (/[A-Z]/.test(password)) strength += 1;
+    // Contains number
+    if (/[0-9]/.test(password)) strength += 1;
+    // Contains special char
+    if (/[^A-Za-z0-9]/.test(password)) strength += 1;
+
+    setPasswordStrength(strength);
+  }, [password]);
+
+  const getPasswordStrengthColor = () => {
+    if (passwordStrength <= 1) return "bg-red-500";
+    if (passwordStrength <= 3) return "bg-yellow-500";
+    return "bg-green-500";
+  };
+
+  const getPasswordStrengthText = () => {
+    if (passwordStrength <= 1) return "Weak";
+    if (passwordStrength <= 3) return "Medium";
+    return "Strong";
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +129,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
 
       // Basic email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
+      if (!emailRegex.test(email) && !isAdminLogin) {
         setError("Please enter a valid email address");
         return;
       }
@@ -62,7 +140,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
         return;
       }
 
-      onLogin(email, password);
+      onLogin(email, password, isAdminLogin);
     } catch (err) {
       setError("An unexpected error occurred. Please try again.");
       console.error("Login form error:", err);
@@ -107,12 +185,42 @@ const LoginForm: React.FC<LoginFormProps> = ({
       return;
     }
 
+    if (passwordStrength < 3) {
+      setError(
+        "Please use a stronger password with a mix of letters, numbers, and symbols",
+      );
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
 
     onRegister(email, password, inviteCode);
+  };
+
+  const handleForgotPassword = () => {
+    if (!email.trim()) {
+      setError("Please enter your email address to reset your password");
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    onForgotPassword(email);
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
+  const toggleConfirmPasswordVisibility = () => {
+    setShowConfirmPassword(!showConfirmPassword);
   };
 
   return (
@@ -152,6 +260,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
                     className="pl-10"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                   />
                 </div>
               </div>
@@ -159,21 +268,55 @@ const LoginForm: React.FC<LoginFormProps> = ({
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <Label htmlFor="password">Password</Label>
-                  <a href="#" className="text-xs text-primary hover:underline">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-xs text-primary hover:underline"
+                  >
                     Forgot password?
-                  </a>
+                  </button>
                 </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    onClick={togglePasswordVisibility}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="admin-login"
+                  checked={isAdminLogin}
+                  onCheckedChange={(checked) =>
+                    setIsAdminLogin(checked === true)
+                  }
+                />
+                <label
+                  htmlFor="admin-login"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-1"
+                >
+                  <ShieldAlert className="h-3 w-3 text-amber-500" />
+                  Admin Login
+                </label>
               </div>
             </CardContent>
 
@@ -198,6 +341,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
                 variant="outline"
                 className="w-full"
                 onClick={onGoogleLogin}
+                disabled={isLoading}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -249,23 +393,70 @@ const LoginForm: React.FC<LoginFormProps> = ({
                     className="pl-10"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="register-password">Password</Label>
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="register-password">Password</Label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>
+                          Password should be at least 8 characters and include:
+                        </p>
+                        <ul className="list-disc pl-4 text-xs mt-1">
+                          <li>Uppercase letters (A-Z)</li>
+                          <li>Lowercase letters (a-z)</li>
+                          <li>Numbers (0-9)</li>
+                          <li>Special characters (!@#$%^&*)</li>
+                        </ul>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="register-password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password"
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    onClick={togglePasswordVisibility}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
+                {password && (
+                  <div className="mt-1">
+                    <div className="h-1 w-full bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${getPasswordStrengthColor()}`}
+                        style={{ width: `${(passwordStrength / 5) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-right mt-1">
+                      Password strength: {getPasswordStrengthText()}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -274,13 +465,31 @@ const LoginForm: React.FC<LoginFormProps> = ({
                   <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="confirm-password"
-                    type="password"
+                    type={showConfirmPassword ? "text" : "password"}
                     placeholder="••••••••"
-                    className="pl-10"
+                    className="pl-10 pr-10"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
                   />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                    onClick={toggleConfirmPasswordVisibility}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-destructive mt-1">
+                    Passwords do not match
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -320,6 +529,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
                 variant="outline"
                 className="w-full"
                 onClick={onGoogleLogin}
+                disabled={isLoading}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
