@@ -14,17 +14,28 @@ const LoginPage = () => {
 
   const handleLogin = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await signIn(email, password);
-    setLoading(false);
+    try {
+      const { error } = await signIn(email, password);
 
-    if (error) {
+      if (error) {
+        toast({
+          title: "Login failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      navigate("/");
+    } catch (unexpectedError) {
+      console.error("Unexpected login error:", unexpectedError);
       toast({
         title: "Login failed",
-        description: error.message,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
-    } else {
-      navigate("/");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -53,20 +64,39 @@ const LoginPage = () => {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
-    });
-    setLoading(false);
+    try {
+      // Show loading indicator for OAuth
+      toast({
+        title: "Redirecting to Google",
+        description:
+          "Please wait while we redirect you to Google for authentication.",
+      });
 
-    if (error) {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (error) {
+        toast({
+          title: "Google login failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+
+      // No need to navigate here as OAuth will handle the redirect
+    } catch (unexpectedError) {
+      console.error("Unexpected OAuth error:", unexpectedError);
       toast({
         title: "Google login failed",
-        description: error.message,
+        description: "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 

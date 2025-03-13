@@ -56,6 +56,26 @@ export function useChampions(championClass?: string) {
   ) => {
     if (!user) return { error: new Error("User not authenticated") };
 
+    // Find the champion details from the champions list
+    const championDetails = champions.find((champ) => champ.id === championId);
+    if (!championDetails) {
+      return { error: new Error("Champion not found") };
+    }
+
+    // Create an optimistic user champion object
+    const optimisticChampion = {
+      id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      user_id: user.id,
+      champion_id: championId,
+      rarity,
+      rank,
+      // Include champion details for UI rendering
+      champions: championDetails,
+    };
+
+    // Optimistically update the UI
+    setUserChampions((prev) => [...prev, optimisticChampion]);
+
     try {
       const result = await addUserChampion({
         user_id: user.id,
@@ -64,14 +84,33 @@ export function useChampions(championClass?: string) {
         rank,
       });
 
-      if (!result.error) {
-        // Refresh user champions
-        const updatedUserChampions = await getUserChampions(user.id);
-        setUserChampions(updatedUserChampions);
+      if (result.error) {
+        // Revert optimistic update on error
+        setUserChampions((prev) =>
+          prev.filter((champ) => champ.id !== optimisticChampion.id),
+        );
+        throw result.error;
       }
+
+      // Replace the optimistic champion with the real one
+      setUserChampions((prev) =>
+        prev.map((champ) =>
+          champ.id === optimisticChampion.id
+            ? {
+                ...result.data,
+                champions: championDetails,
+              }
+            : champ,
+        ),
+      );
 
       return result;
     } catch (err) {
+      // Ensure optimistic update is reverted on any error
+      setUserChampions((prev) =>
+        prev.filter((champ) => champ.id !== optimisticChampion.id),
+      );
+
       return {
         error:
           err instanceof Error ? err : new Error("An unknown error occurred"),

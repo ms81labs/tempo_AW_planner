@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { Card, CardHeader, CardTitle } from "../ui/card";
+import React, { useState, useEffect, useMemo } from "react";
+import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
@@ -24,6 +24,9 @@ import { useToast } from "../ui/use-toast";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChampions } from "@/hooks/useChampions";
+import { useDebounce } from "@/hooks/useDebounce";
+import { LoadingSpinner } from "../ui/loading-spinner";
+import { createMemoizedComponent } from "../ui/memoized-component";
 
 interface ChampionListProps {
   onSelectChampion?: (
@@ -63,6 +66,7 @@ const ChampionList: React.FC<ChampionListProps> = ({
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [activeTab, setActiveTab] = useState("cosmic");
   const [selectedRarity, setSelectedRarity] =
     useState<ChampionRarity>("6-Star");
@@ -163,26 +167,36 @@ const ChampionList: React.FC<ChampionListProps> = ({
   };
 
   // Filter champions based on search query
-  const filteredAvailableChampions = (champions[activeTab] || []).filter(
-    (champion) =>
-      champion.name.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
+  const filteredAvailableChampions = useMemo(() => {
+    return (champions[activeTab] || []).filter((champion) =>
+      champion.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()),
+    );
+  }, [champions, activeTab, debouncedSearchQuery]);
 
   // Filter user champions based on search query, class and selected rarity
-  const filteredUserChampions = userChampions.filter((userChampion) => {
-    const nameMatch = userChampion.champions.name
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-    const classMatch = userChampion.champions.class === activeTab;
-    const rarityMatch = userChampion.rarity === selectedRarity;
-    return nameMatch && classMatch && rarityMatch;
-  });
+  const filteredUserChampions = useMemo(() => {
+    return userChampions.filter((userChampion) => {
+      const nameMatch = userChampion.champions.name
+        .toLowerCase()
+        .includes(debouncedSearchQuery.toLowerCase());
+      const classMatch = userChampion.champions.class === activeTab;
+      const rarityMatch = userChampion.rarity === selectedRarity;
+      return nameMatch && classMatch && rarityMatch;
+    });
+  }, [userChampions, debouncedSearchQuery, activeTab, selectedRarity]);
 
   // Add a champion to user's collection
   const handleAddChampion = async () => {
     if (!user || !newChampionId) return;
 
     try {
+      // Show loading toast
+      toast({
+        title: "Adding champion",
+        description:
+          "Please wait while we add the champion to your collection.",
+      });
+
       const { data, error } = await supabase.from("user_champions").insert({
         user_id: user.id,
         champion_id: newChampionId,
@@ -220,6 +234,13 @@ const ChampionList: React.FC<ChampionListProps> = ({
 
   // Remove a champion from user's collection
   const handleRemoveChampion = async (userChampionId: string) => {
+    // Store champion for potential restoration
+    const championToRemove = userChampions.find((c) => c.id === userChampionId);
+    if (!championToRemove) return;
+
+    // Optimistically update UI
+    setUserChampions((prev) => prev.filter((c) => c.id !== userChampionId));
+
     try {
       const { error } = await supabase
         .from("user_champions")
@@ -228,15 +249,16 @@ const ChampionList: React.FC<ChampionListProps> = ({
 
       if (error) throw error;
 
-      setUserChampions(
-        userChampions.filter((champion) => champion.id !== userChampionId),
-      );
       toast({
         title: "Success",
         description: "Champion removed from your collection.",
       });
     } catch (error) {
       console.error("Error removing champion:", error);
+
+      // Restore champion on error
+      setUserChampions((prev) => [...prev, championToRemove]);
+
       toast({
         title: "Error",
         description: "Failed to remove champion. Please try again.",
@@ -247,10 +269,20 @@ const ChampionList: React.FC<ChampionListProps> = ({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-2">Loading champions...</span>
-      </div>
+      <Card className="w-full h-full bg-white overflow-hidden flex flex-col">
+        <CardHeader className="pb-2 border-b">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-xl">MCOC Champion List</CardTitle>
+            <div className="animate-pulse bg-gray-200 h-8 w-32 rounded"></div>
+          </div>
+        </CardHeader>
+        <div className="p-4 border-b">
+          <div className="animate-pulse bg-gray-200 h-10 w-full rounded"></div>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-8">
+          <LoadingSpinner size="lg" text="Loading champions..." />
+        </div>
+      </Card>
     );
   }
 
@@ -601,4 +633,5 @@ const ChampionList: React.FC<ChampionListProps> = ({
   );
 };
 
-export default ChampionList;
+// Use memoization to prevent unnecessary re-renders
+export default createMemoizedComponent(ChampionList);

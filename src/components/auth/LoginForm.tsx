@@ -36,24 +36,82 @@ const LoginForm: React.FC<LoginFormProps> = ({
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email || !password) {
-      setError("Please fill in all fields");
-      return;
+
+    try {
+      // Enhanced form validation
+      if (!email.trim()) {
+        setError("Email is required");
+        return;
+      }
+
+      if (!password.trim()) {
+        setError("Password is required");
+        return;
+      }
+
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setError("Please enter a valid email address");
+        return;
+      }
+
+      // Password minimum length validation
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters long");
+        return;
+      }
+
+      onLogin(email, password);
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Login form error:", err);
     }
-    onLogin(email, password);
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!email || !password || !confirmPassword || !inviteCode) {
-      setError("Please fill in all fields");
+
+    // Enhanced form validation with specific error messages
+    if (!email) {
+      setError("Email is required");
       return;
     }
+
+    if (!password) {
+      setError("Password is required");
+      return;
+    }
+
+    if (!confirmPassword) {
+      setError("Please confirm your password");
+      return;
+    }
+
+    if (!inviteCode) {
+      setError("Invitation code is required");
+      return;
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    // Password strength validation
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
+
     onRegister(email, password, inviteCode);
   };
 

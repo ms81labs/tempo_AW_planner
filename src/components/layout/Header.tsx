@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -37,6 +38,7 @@ const Header = ({
   onLogout = () => {},
 }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   const navItems = [
     { name: "Dashboard", path: "/" },
@@ -48,6 +50,34 @@ const Header = ({
     { name: "War Season", path: "/season" },
     { name: "Project Status", path: "/status" },
   ];
+
+  // Handle navigation with proper event handling
+  const handleNavigation = useCallback(
+    (path: string) => {
+      navigate(path);
+      // Close mobile menu when navigating
+      setMobileMenuOpen(false);
+    },
+    [navigate],
+  );
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        mobileMenuOpen &&
+        !(event.target as Element).closest(".mobile-menu-container") &&
+        !(event.target as Element).closest("[data-mobile-menu-trigger]")
+      ) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [mobileMenuOpen]);
 
   return (
     <header className="w-full h-20 bg-white border-b border-gray-200 shadow-sm fixed top-0 left-0 z-50">
@@ -68,7 +98,10 @@ const Header = ({
               key={item.path}
               variant="ghost"
               className="text-sm font-medium"
-              onClick={() => onNavigate(item.path)}
+              onClick={(e) => {
+                e.preventDefault();
+                handleNavigation(item.path);
+              }}
             >
               {item.name}
             </Button>
@@ -135,7 +168,11 @@ const Header = ({
             variant="ghost"
             size="icon"
             className="md:hidden"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMobileMenuOpen(!mobileMenuOpen);
+            }}
+            data-mobile-menu-trigger
           >
             <Menu className="h-6 w-6" />
           </Button>
@@ -144,15 +181,16 @@ const Header = ({
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-20 left-0 right-0 bg-white border-b border-gray-200 shadow-md z-40">
+        <div className="md:hidden absolute top-20 left-0 right-0 bg-white border-b border-gray-200 shadow-md z-40 mobile-menu-container">
           <nav className="container mx-auto py-4 px-4 flex flex-col space-y-2">
             {navItems.map((item) => (
               <Button
                 key={item.path}
                 variant="ghost"
                 className="w-full justify-start"
-                onClick={() => {
-                  onNavigate(item.path);
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNavigation(item.path);
                   setMobileMenuOpen(false);
                 }}
               >

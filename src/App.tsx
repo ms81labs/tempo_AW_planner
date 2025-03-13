@@ -1,15 +1,18 @@
-import { Suspense } from "react";
+import { Suspense, lazy } from "react";
 import { useRoutes, Routes, Route, Navigate } from "react-router-dom";
 import Home from "./components/home";
 import OfficerDashboard from "./components/dashboard/OfficerDashboard";
-import WarMapPage from "./pages/WarMapPage";
 import LoginPage from "./pages/LoginPage";
-import BattlegroupPage from "./pages/BattlegroupPage";
-import ChampionListPage from "./pages/ChampionListPage";
-import StatusPage from "./pages/StatusPage";
-import MembersPage from "./pages/MembersPage";
-import MemberDetailPage from "./pages/MemberDetailPage";
-import RosterUpdatePage from "./pages/RosterUpdatePage";
+import { ErrorBoundary } from "./components/ui/error-boundary";
+
+// Lazy load pages for better performance
+const WarMapPage = lazy(() => import("./pages/WarMapPage"));
+const BattlegroupPage = lazy(() => import("./pages/BattlegroupPage"));
+const ChampionListPage = lazy(() => import("./pages/ChampionListPage"));
+const StatusPage = lazy(() => import("./pages/StatusPage"));
+const MembersPage = lazy(() => import("./pages/MembersPage"));
+const MemberDetailPage = lazy(() => import("./pages/MemberDetailPage"));
+const RosterUpdatePage = lazy(() => import("./pages/RosterUpdatePage"));
 import routes from "tempo-routes";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -18,8 +21,14 @@ import { Toaster } from "./components/ui/toaster";
 function App() {
   return (
     <AuthProvider>
-      <Suspense fallback={<p>Loading...</p>}>
-        <>
+      <ErrorBoundary>
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center h-screen">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            </div>
+          }
+        >
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
@@ -87,8 +96,8 @@ function App() {
           </Routes>
           {import.meta.env.VITE_TEMPO === "true" && useRoutes(routes)}
           <Toaster />
-        </>
-      </Suspense>
+        </Suspense>
+      </ErrorBoundary>
     </AuthProvider>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -26,14 +26,19 @@ import {
   User,
   Users,
   Trash,
-  Edit,
-  Copy,
   ExternalLink,
+  Copy,
+  Search,
 } from "lucide-react";
 import { useToast } from "../ui/use-toast";
+import { LoadingSpinner } from "../ui/loading-spinner";
+import { usePagination } from "@/hooks/usePagination";
+import { PaginationControls } from "../ui/pagination-controls";
+import { useDebounce } from "@/hooks/useDebounce";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { QRCodeSVG } from "qrcode.react";
+import { useNavigate } from "react-router-dom";
 
 interface MemberListProps {
   allianceId?: string;
@@ -57,6 +62,7 @@ interface Member {
 const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -65,19 +71,25 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberLineId, setNewMemberLineId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [inviteLink, setInviteLink] = useState("");
 
   // Fetch members on component mount
   useEffect(() => {
     if (!user) return;
 
+    let isMounted = true;
     const effectiveAllianceId = allianceId || profile?.alliance_id;
     if (!effectiveAllianceId) {
-      setLoading(false);
+      if (isMounted) setLoading(false);
       return;
     }
 
     fetchMembers(effectiveAllianceId);
+
+    return () => {
+      isMounted = false;
+    };
   }, [user, allianceId, profile]);
 
   const fetchMembers = async (alliance_id: string) => {
@@ -89,7 +101,7 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
         .select(
           `
           id, username, ingame_name, line_id, role, avatar_url, alliance_id,
-          battlegroup_members!inner(id, battlegroup:battlegroup_id(id, name))
+          battlegroup_members(battlegroup:battlegroup_id(id, name))
         `,
         )
         .eq("alliance_id", alliance_id);
@@ -126,26 +138,95 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
   };
 
   const handleAddMember = async () => {
-    if (!newMemberName || !newMemberLineId) {
+    // Enhanced form validation with more comprehensive checks
+    if (!newMemberName.trim()) {
       toast({
         title: "Missing Information",
-        description: "Please provide both in-game name and LINE ID.",
+        description: "Please provide an in-game name.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newMemberLineId.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide a LINE ID.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate name length
+    if (newMemberName.trim().length < 3) {
+      toast({
+        title: "Invalid Name",
+        description: "In-game name must be at least 3 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check for special characters in name
+    if (!/^[a-zA-Z0-9\s._-]+$/.test(newMemberName)) {
+      toast({
+        title: "Invalid Name",
+        description: "In-game name contains invalid characters.",
         variant: "destructive",
       });
       return;
     }
 
     const effectiveAllianceId = allianceId || profile?.alliance_id;
-    if (!effectiveAllianceId) return;
+    if (!effectiveAllianceId) {
+      toast({
+        title: "Error",
+        description: "No alliance ID found. Please refresh and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create optimistic member object with a unique temporary ID
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const optimisticMember = {
+      id: tempId,
+      username: `${newMemberName.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
+      ingame_name: newMemberName,
+      line_id: newMemberLineId,
+      role: "member",
+      alliance_id: effectiveAllianceId,
+      champion_count: 0,
+      battlegroup: null,
+      avatar_url: null,
+    };
+
+    // Store form values in case we need to retry
+    const memberNameToAdd = newMemberName;
+    const memberLineIdToAdd = newMemberLineId;
+
+    // Reset form immediately for better UX
+    setNewMemberName("");
+    setNewMemberLineId("");
+    setShowAddDialog(false);
+
+    // Optimistically update UI with functional update to avoid race conditions
+    setMembers((prevMembers) => [...prevMembers, optimisticMember]);
+
+    // Show loading toast
+    toast({
+      title: "Adding Member",
+      description: `Adding ${memberNameToAdd} to the alliance...`,
+    });
 
     try {
       // Create a new user with member role
       const { data, error } = await supabase
         .from("users")
         .insert({
-          username: `${newMemberName.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}`,
-          ingame_name: newMemberName,
-          line_id: newMemberLineId,
+          username: optimisticMember.username,
+          ingame_name: memberNameToAdd,
+          line_id: memberLineIdToAdd,
           role: "member",
           alliance_id: effectiveAllianceId,
         })
@@ -153,23 +234,37 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
 
       if (error) throw error;
 
-      // Add the new member to the list
-      setMembers([...members, { ...data[0], champion_count: 0 }]);
+      if (!data || data.length === 0) {
+        throw new Error("No data returned from server");
+      }
 
-      // Reset form
-      setNewMemberName("");
-      setNewMemberLineId("");
-      setShowAddDialog(false);
+      // Replace optimistic member with actual data using functional update
+      setMembers((prevMembers) =>
+        prevMembers.map((member) =>
+          member.id === optimisticMember.id
+            ? { ...data[0], champion_count: 0 }
+            : member,
+        ),
+      );
 
       toast({
         title: "Success",
-        description: `${newMemberName} has been added to the alliance.`,
+        description: `${memberNameToAdd} has been added to the alliance.`,
       });
     } catch (error) {
       console.error("Error adding member:", error);
+
+      // Remove optimistic member on error using functional update
+      setMembers((prevMembers) =>
+        prevMembers.filter((member) => member.id !== optimisticMember.id),
+      );
+
       toast({
         title: "Error",
-        description: "Failed to add member. Please try again.",
+        description:
+          error instanceof Error
+            ? `Failed to add member: ${error.message}`
+            : "Failed to add member. Please try again.",
         variant: "destructive",
       });
     }
@@ -183,6 +278,15 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
     )
       return;
 
+    // Store member for potential restoration
+    const memberToRemove = members.find((member) => member.id === memberId);
+    if (!memberToRemove) return;
+
+    // Optimistically update UI
+    setMembers((prevMembers) =>
+      prevMembers.filter((member) => member.id !== memberId),
+    );
+
     try {
       // Remove user from alliance
       const { error } = await supabase
@@ -192,15 +296,16 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
 
       if (error) throw error;
 
-      // Update the members list
-      setMembers(members.filter((member) => member.id !== memberId));
-
       toast({
         title: "Member Removed",
         description: `${memberName} has been removed from the alliance.`,
       });
     } catch (error) {
       console.error("Error removing member:", error);
+
+      // Restore member on error
+      setMembers((prevMembers) => [...prevMembers, memberToRemove]);
+
       toast({
         title: "Error",
         description: "Failed to remove member. Please try again.",
@@ -209,17 +314,20 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
     }
   };
 
-  const generateInviteLink = (memberId: string) => {
+  const generateInviteLink = useCallback((memberId: string) => {
     const baseUrl = window.location.origin;
     return `${baseUrl}/roster-update/${memberId}`;
-  };
+  }, []);
 
-  const handleGenerateQR = (member: Member) => {
-    setSelectedMember(member);
-    const link = generateInviteLink(member.id);
-    setInviteLink(link);
-    setShowQRDialog(true);
-  };
+  const handleGenerateQR = useCallback(
+    (member: Member) => {
+      setSelectedMember(member);
+      const link = generateInviteLink(member.id);
+      setInviteLink(link);
+      setShowQRDialog(true);
+    },
+    [generateInviteLink],
+  );
 
   const copyInviteLink = () => {
     navigator.clipboard.writeText(inviteLink);
@@ -229,181 +337,225 @@ const MemberList: React.FC<MemberListProps> = ({ allianceId }) => {
     });
   };
 
+  const handleViewMember = useCallback(
+    (memberId: string) => {
+      navigate(`/member/${memberId}`);
+    },
+    [navigate],
+  );
+
   // Filter members based on search query
   const filteredMembers = members.filter(
     (member) =>
-      member.ingame_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.line_id?.toLowerCase().includes(searchQuery.toLowerCase()),
+      member.ingame_name
+        ?.toLowerCase()
+        .includes(debouncedSearchQuery.toLowerCase()) ||
+      member.line_id
+        ?.toLowerCase()
+        .includes(debouncedSearchQuery.toLowerCase()),
   );
+
+  // Paginate filtered members
+  const {
+    paginatedData: paginatedMembers,
+    currentPage,
+    totalPages,
+    goToPage,
+  } = usePagination({
+    data: filteredMembers,
+    itemsPerPage: 10,
+    initialPage: 1,
+  });
+
+  // Render loading state
+  if (loading) {
+    return (
+      <Card className="w-full h-full bg-white overflow-hidden flex flex-col">
+        <CardHeader className="pb-2 border-b">
+          <CardTitle className="text-xl">Alliance Members</CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 flex items-center justify-center">
+          <LoadingSpinner size="md" text="Loading members..." />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="w-full h-full bg-white overflow-hidden flex flex-col">
       <CardHeader className="pb-2 border-b">
         <div className="flex justify-between items-center">
           <CardTitle className="text-xl">Alliance Members</CardTitle>
-          <div className="flex items-center gap-2">
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-              <DialogTrigger asChild>
-                <Button size="sm" className="gap-1">
-                  <Plus className="h-4 w-4" /> Add Member
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Alliance Member</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="member-name" className="text-right">
-                      In-Game Name:
-                    </Label>
-                    <Input
-                      id="member-name"
-                      value={newMemberName}
-                      onChange={(e) => setNewMemberName(e.target.value)}
-                      className="col-span-3"
-                      placeholder="Enter member's in-game name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="line-id" className="text-right">
-                      LINE ID:
-                    </Label>
-                    <Input
-                      id="line-id"
-                      value={newMemberLineId}
-                      onChange={(e) => setNewMemberLineId(e.target.value)}
-                      className="col-span-3"
-                      placeholder="Enter member's LINE ID"
-                    />
-                  </div>
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1">
+                <Plus className="h-4 w-4" /> Add Member
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Alliance Member</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="member-name" className="text-right">
+                    In-Game Name:
+                  </Label>
+                  <Input
+                    id="member-name"
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    className="col-span-3"
+                    placeholder="Enter member's in-game name"
+                  />
                 </div>
-                <DialogFooter>
-                  <Button type="submit" onClick={handleAddMember}>
-                    Add Member
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="line-id" className="text-right">
+                    LINE ID:
+                  </Label>
+                  <Input
+                    id="line-id"
+                    value={newMemberLineId}
+                    onChange={(e) => setNewMemberLineId(e.target.value)}
+                    className="col-span-3"
+                    placeholder="Enter member's LINE ID"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" onClick={handleAddMember}>
+                  Add Member
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </CardHeader>
 
       <div className="p-4 border-b">
         <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
             placeholder="Search members by name or LINE ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
           />
-          <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         </div>
       </div>
 
       <CardContent className="flex-1 p-0 overflow-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : filteredMembers.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Member</TableHead>
-                <TableHead>LINE ID</TableHead>
-                <TableHead>Battlegroup</TableHead>
-                <TableHead>Champions</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMembers.map((member) => (
-                <TableRow key={member.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                        {member.ingame_name?.charAt(0).toUpperCase() || "M"}
-                      </div>
-                      <div>
-                        <div>{member.ingame_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {member.role === "officer" ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-blue-50 text-blue-700 border-blue-200"
-                            >
-                              Officer
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-gray-50 text-gray-700 border-gray-200"
-                            >
-                              Member
-                            </Badge>
-                          )}
+        {filteredMembers.length > 0 ? (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Member</TableHead>
+                  <TableHead>LINE ID</TableHead>
+                  <TableHead>Battlegroup</TableHead>
+                  <TableHead>Champions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedMembers.map((member) => (
+                  <TableRow key={member.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                          {member.ingame_name?.charAt(0).toUpperCase() || "M"}
+                        </div>
+                        <div>
+                          <div>{member.ingame_name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {member.role === "officer" ? (
+                              <Badge
+                                variant="outline"
+                                className="bg-blue-50 text-blue-700 border-blue-200"
+                              >
+                                Officer
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="bg-gray-50 text-gray-700 border-gray-200"
+                              >
+                                Member
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{member.line_id}</TableCell>
-                  <TableCell>
-                    {member.battlegroup ? (
-                      <Badge
-                        variant="outline"
-                        className="bg-green-50 text-green-700 border-green-200"
-                      >
-                        {member.battlegroup.name}
+                    </TableCell>
+                    <TableCell>{member.line_id}</TableCell>
+                    <TableCell>
+                      {member.battlegroup ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-green-50 text-green-700 border-green-200"
+                        >
+                          {member.battlegroup.name}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-amber-50 text-amber-700 border-amber-200"
+                        >
+                          Unassigned
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {member.champion_count} champions
                       </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="bg-amber-50 text-amber-700 border-amber-200"
-                      >
-                        Unassigned
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {member.champion_count} champions
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleGenerateQR(member)}
-                      >
-                        <QrCode className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          (window.location.href = `/member/${member.id}`)
-                        }
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-500"
-                        onClick={() =>
-                          handleRemoveMember(member.id, member.ingame_name)
-                        }
-                      >
-                        <Trash className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleGenerateQR(member)}
+                          title="Generate QR Code"
+                        >
+                          <QrCode className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleViewMember(member.id)}
+                          title="View Member Details"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500"
+                          onClick={() =>
+                            handleRemoveMember(member.id, member.ingame_name)
+                          }
+                          title="Remove Member"
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {totalPages > 1 && (
+              <div className="p-4 border-t">
+                <PaginationControls
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={goToPage}
+                />
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-center justify-center h-64">
             <Users className="h-12 w-12 text-gray-300 mb-2" />

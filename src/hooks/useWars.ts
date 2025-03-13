@@ -75,30 +75,50 @@ export function useWars(allianceId?: string, seasonId?: string) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     async function fetchData() {
       try {
+        if (!isMounted) return;
         setLoading(true);
+
         // Use profile.alliance_id if allianceId is not provided
         const effectiveAllianceId = allianceId || profile?.alliance_id;
 
         if (!effectiveAllianceId) {
-          setWars([]);
+          if (isMounted) {
+            setWars([]);
+            setError(null);
+            setLoading(false);
+          }
           return;
         }
 
         const warsData = await getWarsByAlliance(effectiveAllianceId, seasonId);
-        setWars(warsData);
-        setError(null);
+
+        // Batch state updates to avoid race conditions
+        if (isMounted) {
+          // Use functional updates to ensure we're working with the latest state
+          setWars(() => warsData);
+          setError(null);
+          setLoading(false);
+        }
       } catch (err) {
-        setError(
-          err instanceof Error ? err : new Error("An unknown error occurred"),
-        );
-      } finally {
-        setLoading(false);
+        if (isMounted) {
+          // Use functional updates to ensure we're working with the latest state
+          setWars([]);
+          setError(
+            err instanceof Error ? err : new Error("An unknown error occurred"),
+          );
+          setLoading(false);
+        }
       }
     }
 
     fetchData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [allianceId, seasonId, profile]);
 
   const createNewWar = async (warData: any) => {

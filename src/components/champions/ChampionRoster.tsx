@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -43,12 +43,12 @@ const ChampionRoster = ({
   ]);
   const [selectedStars, setSelectedStars] = useState<string>("All");
   const [sortBy, setSortBy] = useState<string>("rating");
-  const [filteredChampions, setFilteredChampions] =
+  const [displayedChampions, setDisplayedChampions] =
     useState<Champion[]>(champions);
   const [activeTab, setActiveTab] = useState("browse");
 
-  // Apply filters whenever filter criteria change
-  useEffect(() => {
+  // Use useMemo for expensive filtering and sorting computations
+  const filteredChampions = useMemo(() => {
     let result = [...champions];
 
     // Apply search filter
@@ -72,7 +72,7 @@ const ChampionRoster = ({
     }
 
     // Apply sorting
-    result.sort((a, b) => {
+    return result.sort((a, b) => {
       if (sortBy === "rating") {
         return b.rating - a.rating;
       } else if (sortBy === "name") {
@@ -82,9 +82,12 @@ const ChampionRoster = ({
       }
       return 0;
     });
-
-    setFilteredChampions(result);
   }, [champions, searchQuery, selectedClasses, selectedStars, sortBy]);
+
+  // Update state when memoized value changes
+  useEffect(() => {
+    setDisplayedChampions(filteredChampions);
+  }, [filteredChampions]);
 
   const handleClassToggle = (championClass: ChampionClass) => {
     if (championClass === "All") {
@@ -226,9 +229,9 @@ const ChampionRoster = ({
           </div>
 
           <div className="flex-1 overflow-auto p-4">
-            {filteredChampions.length > 0 ? (
+            {displayedChampions.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {filteredChampions.map((champion) => (
+                {displayedChampions.map((champion) => (
                   <ChampionCard
                     key={champion.id}
                     name={champion.name}
@@ -267,7 +270,7 @@ const ChampionRoster = ({
           <div className="p-4 border-t bg-gray-50">
             <div className="flex justify-between items-center">
               <div className="text-sm text-gray-500">
-                Showing {filteredChampions.length} of {champions.length}{" "}
+                Showing {displayedChampions.length} of {champions.length}{" "}
                 champions
               </div>
               <div className="flex gap-2 items-center">

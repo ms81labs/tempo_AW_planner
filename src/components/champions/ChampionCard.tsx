@@ -69,4 +69,15 @@ const ChampionCard: React.FC<ChampionCardProps> = ({
   );
 };
 
-export default ChampionCard;
+// Use React.memo to prevent unnecessary re-renders
+export default React.memo(ChampionCard, (prevProps, nextProps) => {
+  // Custom comparison function to determine if component should re-render
+  return (
+    prevProps.name === nextProps.name &&
+    prevProps.image === nextProps.image &&
+    prevProps.championClass === nextProps.championClass &&
+    prevProps.rating === nextProps.rating &&
+    prevProps.stars === nextProps.stars &&
+    prevProps.isSelected === nextProps.isSelected
+  );
+});
