@@ -46,9 +46,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       if (isValid && profile) {
         if (requiredRole === "any") {
           setHasRequiredRole(true);
+        } else if (requiredRole === "admin" && profile.is_admin) {
+          // Special case for admin role
+          setHasRequiredRole(true);
         } else {
           setHasRequiredRole(profile.role === requiredRole);
         }
+      } else if (isValid && requiredRole === "any") {
+        // If we have a valid session but no profile yet, allow access to "any" routes
+        setHasRequiredRole(true);
       } else {
         setHasRequiredRole(false);
       }

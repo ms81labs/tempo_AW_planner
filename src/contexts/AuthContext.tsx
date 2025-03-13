@@ -49,6 +49,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error("Error fetching user profile:", error);
+        // Create a basic profile if it doesn't exist
+        if (error.code === "PGRST116") {
+          console.log("User profile not found, creating basic profile");
+          const { data: newProfile, error: createError } = await supabase
+            .from("users")
+            .insert({
+              id: userId,
+              username: `user_${userId.substring(0, 8)}`,
+              role: "member",
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error("Error creating user profile:", createError);
+            return null;
+          }
+
+          setProfile(newProfile);
+          return newProfile;
+        }
         return null;
       }
 
@@ -84,7 +105,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(currentSession?.user ?? null);
 
           if (currentSession?.user) {
-            await fetchProfile(currentSession.user.id);
+            const profileData = await fetchProfile(currentSession.user.id);
+            // If we couldn't get or create a profile, log the error but continue
+            if (!profileData) {
+              console.warn("Could not fetch or create user profile");
+            }
           }
         }
       } catch (error) {
@@ -110,7 +135,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        await fetchProfile(currentSession.user.id);
+        const profileData = await fetchProfile(currentSession.user.id);
+        // If we couldn't get or create a profile, log the error but continue
+        if (!profileData) {
+          console.warn(
+            "Could not fetch or create user profile during auth state change",
+          );
+        }
       } else {
         setProfile(null);
       }
